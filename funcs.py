@@ -14,7 +14,7 @@ def calibrate(fname, num_corn, blk_size):
 
     if ret:
         ret, mat, dist, rvecs, tvecs = cv.calibrateCamera([pts], [corners], img.shape[::-1], None, None)
-        return mat
+        return mat, dist, rvecs, tvecs
 
     return None
 
@@ -36,7 +36,7 @@ def get_matches(img_a, img_b, dist = 0.75, show = False):
         img = cv.drawMatchesKnn(img_a, kp_a, img_b, kp_b, lst, None, flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
         plt.imshow(img)
         plt.show()
-    return np.array(pts_a), np.array(pts_b)
+    return np.array(pts_a, np.float32), np.array(pts_b, np.float32)
 
 def cp_left_to_mat(vec):
     return np.array([0, -vec[2], vec[1], vec[2], 0, -vec[0], -vec[1], vec[0], 0]).reshape((3,3))
