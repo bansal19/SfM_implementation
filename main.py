@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import funcs
 import os
 
+import scipy.optimize
+
 # The fixed matrix was derived with:
 # K, dist, rvecs, tvecs = funcs.calibrate('calibration.jpg', (6, 8), 1)
 # The blocks are 15mm x 15mm
@@ -11,62 +13,69 @@ K = np.array([8.57388364e+02, 0.00000000e+00, 2.34326856e+03, \
     0.00000000e+00, 8.50006705e+02, 1.10511041e+03, \
     0.00000000e+00, 0.00000000e+00, 1.00000000e+00]).reshape((3,3))
 
-folder = 'imgs'
-img_names = [os.path.join(folder, file) for file in os.listdir(folder)  if os.path.isfile(os.path.join(folder, file))]
-imgs = [cv.imread(fname) for fname in img_names]
-matches = [funcs.get_matches(imgs[i], imgs[i+1], 0.95) for i in range(len(imgs)-1)]
-essentials = [cv.findEssentialMat(a,b) for a, b in matches]
-decomp = [cv.decomposeEssentialMat(E) for E, _ in essentials]
+# folder = 'imgs'
+# img_names = [os.path.join(folder, file) for file in os.listdir(folder)  if os.path.isfile(os.path.join(folder, file))]
+# imgs = [cv.imread(fname) for fname in img_names]
+# matches = [funcs.get_matches(imgs[i], imgs[i+1], 0.5) for i in range(len(imgs)-1)]
+# essentials = [cv.findEssentialMat(a, b, K) for a, b in matches]
+# decomp = [cv.recoverPose(E, a, b) for (E, _), (a, b) in zip(essentials, matches)]
 
-pc = []
+# The matching filtering distance
+dist = 0.70
 
-for (_, points), (R1, R2, t), img in zip(matches, decomp, imgs[1:]):
-    for point in points:
-        vecs = funcs.get_3d(point, K, R1, R2, t)
-        vec = vecs[0]
-        pixel = img[int(point[1])][int(point[0])]
-        pc.append([vec[0], vec[1], vec[2], pixel[0], pixel[1], pixel[2]])
+# Load the images
+img_1 = cv.imread('imgs/1.jpg')
+img_2 = cv.imread('imgs/2.jpg')
+img_3 = cv.imread('imgs/3.jpg')
 
-np.savetxt('model.txt', np.array(pc))
+# Find the features and descriptions of the images
+kpts_1, desc_1 = funcs.get_features(img_1)
+kpts_2, desc_2 = funcs.get_features(img_2)
+kpts_3, desc_3 = funcs.get_features(img_3)
 
+# For each pair of images find their matches
+matches_12, mask_12, matches_21, mask_21 = funcs.find_matches(kpts_1, desc_1, kpts_2, desc_2, dist)
+matches_13, mask_13, matches_31, mask_31 = funcs.find_matches(kpts_1, desc_1, kpts_3, desc_3, dist)
+matches_23, mask_23, matches_32, mask_32 = funcs.find_matches(kpts_2, desc_2, kpts_3, desc_3, dist)
 
-# with open('model.txt', 'w') as file:
-#     for (_, points), (R1, R2, t) in zip(matches, decomp):
-#         for point in points:
-#             vecs = funcs.get_3d(point, K, R1, R2, t)
-#             vec = vecs[3]
-#             file.write(f"{vec[0]},{vec[1]},{vec[2]}\n")
+# Using the first set of image (1,2) find the essential matrix and calculate the relative position
+E, mask = cv.findEssentialMat(matches_12, matches_21)
 
+# Filter the matches further down
+filtered_12 = matches_12[(mask == 1)[:,0]]
+filtered_21 = matches_21[(mask == 1)[:,0]]
 
-# pts_a, pts_b = funcs.get_matches(imgs[0], imgs[1], 0.95)
+# Recover the pose from E
+ret, R, t, _ = cv.recoverPose(E, filtered_12, filtered_21)
 
-# E, mask = cv.findEssentialMat(pts_a, pts_b, K)
+# The point cloud
+cloud = []
 
-# Another way to calculate essential matrix (F = K'T * E * K)
-# F, mask = cv.findFundamentalMat(pts_a, pts_b)
-# Ki = np.linalg.inv(K)
-# E2 = np.matmul(Ki.T, np.matmul(F, Ki))
+# Build the camera matrix
+# Assume 1 is at the chilling at the origin
+P1 = funcs.camera_compose(K, np.diag([1,1,1]), np.zeros((3,1)))
 
-# R1, R2, t = cv.decomposeEssentialMat(E2)
+# Create the minimization function
+min_func = funcs.make_min_function(P1, filtered_12, filtered_21, K, R, t)
 
-# dmap = np.zeros((imgs[0].shape[0], imgs[0].shape[1]), np.float32)
-# x = [funcs.get_3d(pt, K, R1, R2, t) for pt in pts_b]
-# for vec, pt in zip(x, pts_b):
-    # v = vec[3]
-    # cv.circle(dmap, (int(pt[0]), int(pt[1])), 20, (v[2], v[2], v[2]), -1)
+# Now it gets fun
+# Miniminize the function to get an estimate of lambda (for the translation)
+# Use 'Powell' (might need more testing)
+res = scipy.optimize.minimize(min_func, 1, method='Powell')
 
-# for r in range(imgs[0].shape[0]):
-#     for c in range(imgs[0].shape[1]):
-#         vec = funcs.get_3d((r,c), K, R1, R2, t)
-#         dmap[r][c] = vec[3][2]
+# Create the second camera
+P2 = funcs.camera_compose(K, R, t * res.x[0])
 
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# for vec in x:
-#     ax.scatter(vec[0], vec[1], vec[2], marker='o')
-# ax.set_xlabel('X Label')
-# ax.set_ylabel('Y Label')
-# ax.set_zlabel('Z Label')
+# Go through the matches
+for point_a, point_b in zip(filtered_12, filtered_21):
+    # Triangulate the points
+    vec = funcs.triangulate(point_a, point_b, P1, P2)
 
-# plt.imshow(dmap, cmap='gray')
-# plt.show()
+    # Get the pixel
+    pixel = img_1[int(point_a[1])][int(point_a[0])]
+
+    # Add it to the cloud
+    cloud.append([vec[0], vec[1], vec[2], pixel[2], pixel[1], pixel[0]])
+
+# Render the point cloud
+funcs.plot(np.array(cloud))

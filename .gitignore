@@ -1,4 +1,5 @@
 .vscode/
 __pycache__/
-imgs/
+dataset
+imgs2/
 model.txt
