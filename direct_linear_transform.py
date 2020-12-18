@@ -29,28 +29,31 @@ def calculate_calibration_matrix(points3D, points2D):
     for i in range(points3D.shape[0]):
         X, Y, Z = points3D_norm[i,0], points3D_norm[i,1], points3D_norm[i,2]
         x, y = points2D_norm[i, 0], points2D_norm[i, 1]
-        matrix.append([-X, -Y, -Z, -1, 0, 0, 0, 0, x*X, x*Y, x*Z])
-        matrix.append([0,0,0,0,-X,-Y,-Z,-1,y*X,y*Y,y*Z])
+        matrix.append([-X, -Y, -Z, -1, 0, 0, 0, 0, x*X, x*Y, x*Z, x])
+        matrix.append([0,0,0,0,-X,-Y,-Z,-1,y*X,y*Y,y*Z, y])
     matrix = np.array(matrix)
     _,_,V = np.linalg.svd(matrix)
-    calibration_matrix = np.reshape(V[-1,:], (3, 4))
+
+    calibration_matrix = np.reshape(V[-1,:] / V[-1,-1], (3,4))
     
     #Invert normalization with transform matrices
-    calibration_matrix = np.dot(np.linalg.pinv(transform2D), np.dot(H, transform3D))
+    calibration_matrix = np.dot(np.linalg.pinv(transform2D), np.dot(calibration_matrix, transform3D))
+    calibration_matrix = calibration_matrix / calibration_matrix[-1,-1]
     return calibration_matrix
     
 def get_calibration_points(old_points, old_points3D, new_image, dist):
     """Match feature points for the new image to the point cloud."""
-    _, mask_a, points2D, _ = funcs.find_matches(old_points[:,0], old_points[:,1], new_image[:,0], new_image[:,1], dist)
-    points_3D = old_points3D[mask_a]
+    _, mask_a, points2D, mask_b = funcs.find_matches(old_points[0], old_points[1], new_image[0], new_image[1], dist)
+    points3D = old_points3D[mask_a]
     return points3D, points2D
     
 def perform_dlt(old_points, old_points3D, new_image, dist=0.7):
     """Perform dlt on the new image to get camera matrix.
     
-    old_points: 2D points in pointcloud from image 1 or 2. numpy array with old_points[:,0] being 2d points and old_points[:,1] being description vectors for the points
+    old_points: 2D points in pointcloud from image 1 or 2. list with old_points[0] being 2d points and old_points[1] being description vectors for the points
     old_points3D: same points as old_points but with depth. old_points3D are in the same order as old_points
-    new_image: 2D points from image 3. numpy array with new_image[:,0] being 2d points and new_image[:,1] being description vectors for the points
+    new_image: 2D points from image 3. list with new_image[0] being 2d points and new_image[1] being description vectors for the points
     """
+    old_points3D = np.array(old_points3D)
     points3D, points2D = get_calibration_points(old_points, old_points3D, new_image, dist)
     return calculate_calibration_matrix(points3D, points2D)
