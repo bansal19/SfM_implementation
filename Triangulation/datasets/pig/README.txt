@@ -1,3 +1,12 @@
+This dataset was taken from:
+
+https://vision.in.tum.de/data/datasets/3dreconstruction
+
+All rights go to them.
+
+
+
+
 "pig" data set -- 27 views sampled on a hemisphere
 
 This directory contains images, corresponding silhouettes and camera calibration parameters. Note that the object may be partially outside the field of view in some images.
