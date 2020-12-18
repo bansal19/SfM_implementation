@@ -8,7 +8,7 @@ def create_depth_map():
     imgR = cv2.imread('imgs/6.jpg',0)
 
 
-    stereo = cv2.StereoBM_create(numDisparities=16, blockSize=15)
+    stereo = cv2.StereoBM_create(numDisparities=16, blockSize=15)§
     disparity = stereo.compute(imgL,imgR)
     plt.imshow(disparity,'gray')
     plt.show()
